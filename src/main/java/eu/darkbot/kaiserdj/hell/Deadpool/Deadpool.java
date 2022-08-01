@@ -3,11 +3,11 @@ package eu.darkbot.kaiserdj.hell.Deadpool;
 import eu.darkbot.api.PluginAPI;
 import eu.darkbot.api.extensions.ExtraMenus;
 import eu.darkbot.api.extensions.*;
-import eu.darkbot.api.game.entities.Ship;
 import eu.darkbot.api.managers.*;
 import eu.darkbot.util.Popups;
 
 import javax.swing.*;
+import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -32,7 +32,8 @@ public class Deadpool implements Task, ExtraMenus{
 
     private DeadpoolData dData;
 
-    private DeadpoolTable dTable;
+    private DeadpoolWindow panelGeneral;
+    private DeadpoolWindow panelSession;
     private Instant lastDead;
 
     public Deadpool(PluginAPI api, HeroAPI hero, EntitiesAPI entities, RepairAPI repair) throws SQLException {
@@ -54,8 +55,6 @@ public class Deadpool implements Task, ExtraMenus{
         }
 
         this.dData = new DeadpoolData();
-
-        this.dTable = new DeadpoolTable(this.i18n, this.plugin, this.dData);
 
         this.lastDead = null;
     }
@@ -97,12 +96,13 @@ public class Deadpool implements Task, ExtraMenus{
                     id.get(),
                     this.heroAPI.getMap().getName(),
                     repairAPI.getLastDeathLocation().toString(),
-                    repairAPI.getLastDeathTime().toString()
+                    String.valueOf(repairAPI.getLastDeathTime().toEpochMilli())
             };
 
             try {
                 this.dData.addData(dead);
-                this.dTable.loadData();
+                this.panelGeneral.getTable().loadData();
+                this.panelSession.getTable().loadData();
             } catch (SQLException e) {
                 throw new RuntimeException(e);
             }
@@ -115,37 +115,63 @@ public class Deadpool implements Task, ExtraMenus{
 
         components.add(createSeparator(this.i18n.get(this.plugin, "deadpool.separador")));
 
-        components.add(create("Deadpool", e -> this.popup()));
+        components.add(create("Deadpool", e -> {
+            try {
+                this.mainWindow();
+            } catch (SQLException ex) {
+                throw new RuntimeException(ex);
+            }
+        }));
 
         return components;
     }
 
-    protected void popup() {
-        JButton reset = new JButton("reset");
-        reset.addActionListener(e -> System.out.println("reset"));
+    protected void mainWindow() throws SQLException {
+        JFrame frame = new JFrame("Deadpool");
 
-        final JOptionPane options = new JOptionPane(this.content());
-        options.setOptions(new Object[] { reset, "OK" });
-        Popups.showMessageAsync("Deadpool", options);
-    }
 
-    protected JComponent content() {
-        final JComponent panel = new JPanel();
-        JScrollPane tablePanel = new JScrollPane(this.dTable.getTable());
-        panel.add(tablePanel, BorderLayout.CENTER);
+        // REVISAR
+        JButton reset = new JButton(this.i18n.get(this.plugin, "deadpool.reset"));
+        reset.addActionListener(e -> {
+            int check = JOptionPane.showConfirmDialog(null,
+                    "Is the contact server up", "Please select",
+                    JOptionPane.YES_NO_OPTION);
 
-        /*final JComponent panel2 = new JPanel();
-        JTable table2 = this.dTable.getTable();
-        JScrollPane tablePanel2 = new JScrollPane(table2);
-        panel2.add(tablePanel2, BorderLayout.CENTER);*/
+            if (check == JOptionPane.YES_NO_OPTION) {
+                try {
+                    this.dData.resetData();
+                    this.panelGeneral.getTable().loadData();
+                    this.panelSession.getTable().loadData();
+                } catch (SQLException ex) {
+                    throw new RuntimeException(ex);
+                }
+            }
+        });
+        JButton close = new JButton("close");
+        reset.addActionListener(e -> frame.dispose());
+
+
+        final JComponent tabGeneral = new JPanel();
+        this.panelGeneral = new DeadpoolWindow(this.i18n, this.plugin, this.dData, "general");
+        tabGeneral.add(this.panelGeneral.getPanel(), BorderLayout.CENTER);
+
+        final JComponent tabSession = new JPanel();
+        this.panelSession = new DeadpoolWindow(this.i18n, this.plugin, this.dData, "session");
+        tabSession.add(this.panelSession.getPanel(), BorderLayout.CENTER);
 
         JTabbedPane tabbed = new JTabbedPane();
         tabbed.setTabPlacement(JTabbedPane.LEFT);
 
-        tabbed.addTab("General", panel);
-        //tabbed.addTab("Session", panel2);
+        tabbed.addTab("General", tabGeneral);
+        tabbed.addTab("Session", tabSession);
 
-        return tabbed;
+        final JOptionPane options = new JOptionPane(tabbed);
+        options.setOptions(new Object[] { reset, "close" });
+
+        frame.getContentPane().add(BorderLayout.CENTER, options);
+        frame.pack();
+        frame.setLocationByPlatform(true);
+        frame.setVisible(true);
     }
 }
 
